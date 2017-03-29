@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:schedulers="http://www.mulesoft.org/schema/mule/schedulers"
+  xmlns:smtps="http://www.mulesoft.org/schema/mule/smtps" xmlns:smtp="http://www.mulesoft.org/schema/mule/smtp"
+  xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking"
+  xmlns:batch="http://www.mulesoft.org/schema/mule/batch" xmlns:file="http://www.mulesoft.org/schema/mule/file"
+  xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:scripting="http://www.mulesoft.org/schema/mule/scripting"
+  xmlns:mulexml="http://www.mulesoft.org/schema/mule/xml" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+  xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+  xmlns:spring="http://www.springframework.org/schema/beans" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.mulesoft.org/schema/mule/smtps http://www.mulesoft.org/schema/mule/smtps/current/mule-smtps.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/xml http://www.mulesoft.org/schema/mule/xml/current/mule-xml.xsd
+http://www.mulesoft.org/schema/mule/scripting http://www.mulesoft.org/schema/mule/scripting/current/mule-scripting.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smtp/current/mule-smtp.xsd
+http://www.mulesoft.org/schema/mule/schedulers http://www.mulesoft.org/schema/mule/schedulers/current/mule-schedulers.xsd">
+
+  <http:request-config name="HTTP_Request_StravaCz"
+    protocol="HTTPS" host="www.strava.cz" port="443"
+    doc:name="HTTP Request Configuration" />
+
+  <flow name="stravaTommorowFlow">
+    <poll doc:name="Mo-Fr 14:00">
+      <schedulers:cron-scheduler expression="0 0 14 ? * MON,TUE,WED,THU,FRI *"
+        timeZone="Europe/Prague" />
+      <flow-ref name="stravaSub_ObjednavkyFlow" doc:name="stravaSub_ObjednavkyFlow" />
+    </poll>
+    <scripting:component doc:name="Groovy">
+      <scripting:script engine="Groovy"><![CDATA[import groovy.xml.MarkupBuilder
+
+def fnd
+def food = [:], day = [:]
+String objednano
+Date dta, dt, dtn = new Date()
+Boolean obj, aktualizace = false
+
+objednavky = payload
+objednavky.eachLine { line, count ->
+
+	// Datum aktualizace
+	if (line.contains("Datum aktualizace")) {
+		aktualizace = true
+	}
+	if (aktualizace && (fnd = (line =~ /class="hodnota">(\d+).\s(\d+).\s(\d+)\s\d+:\d+<\/div>/))) {
+		dta = new Date().parse('dd.MM.yyyy', fnd[0][1] + "." + fnd[0][2] + "." + fnd[0][3])
+		aktualizace = false
+	}
+
+	// Den
+	if ((fnd = (line =~ /class="objednavka-den-obalka"\stitle="(.*)\s(\d+).\s(\d+)."/))) {
+		if (food.isEmpty() == false) {
+			day.put([dt:dt,obj:obj], [:] << food)
+			food.clear()
+		}
+		dt = new Date().parse('dd.MM.yyyy', fnd[0][2] + "." + fnd[0][3] + "." + dta.format('yyyy'))
+	}
+
+	// Objednano
+	if ((fnd = (line =~ /zaskrtavaciPolicko_zelena\.png\)\s([-\d]+)px/))) {
+		if (fnd[0][1].equals("0")) {
+			obj = false
+		} else {
+			obj = true
+		}
+	}
+
+	// Jidlo
+	if ((fnd = (line =~ /class='objednavka-jidlo-popis'>(.*?)<\/div><div\sclass='objednavka-jidlo-nazev'>(.*?)<\/div>/))) {
+		food.put(fnd[0][1], fnd[0][2])
+	}
+
+}
+
+// Collect HTML body
+def writer = new StringWriter()
+def html = new MarkupBuilder(writer)
+
+html.div() {
+	h1('Školní jídelna - zítra')
+	day.each { param, foods ->
+		if ((dtn+1).format('dd.MM.yyyy').equals(param.get('dt').format('dd.MM.yyyy'))) {
+			if (param.get('obj')) {
+				objednano = 'objednáno'
+			} else {
+				objednano = 'odhlášeno'
+			}
+			h2(param.get('dt').format('dd.MM.yyyy') + " - " + objednano)
+			p {
+				strong('Polévka: ')
+				mkp.yield(foods.get('polévka'))
+			}
+			p {
+				strong('Oběd: ')
+				mkp.yield(foods.get('oběd'))
+			}
+		}
+	}
+}
+payload = writer
+]]></scripting:script>
+    </scripting:component>
+    <smtps:outbound-endpoint host="smtp.gmail.com"
+      port="465" user="mule@bobb.cz" password="AtMmiAQaggSDPwVgGp" to="michal.basl@bobb.cz,jana.baslova@bobb.cz,matej.basl@bobb.cz"
+      from="mule@bobb.cz" subject="&#352;koln&#237; j&#237;delna - z&#237;tra"
+      responseTimeout="10000" doc:name="JidelnaZitra">
+      <property key="contentType" value="text/html" />
+    </smtps:outbound-endpoint>
+  </flow>
+
+  <flow name="stravaNextWeekFlow">
+    <poll doc:name="Thu 18:00">
+      <schedulers:cron-scheduler expression="0 0 18 ? * THU *"
+        timeZone="Europe/Prague" />
+      <flow-ref name="stravaSub_ObjednavkyFlow" doc:name="stravaSub_ObjednavkyFlow" />
+    </poll>
+    <scripting:component doc:name="Groovy">
+      <scripting:script engine="Groovy"><![CDATA[import groovy.xml.MarkupBuilder
+
+def fnd
+def food = [:], day = [:]
+String objednano
+Date dta, dt, dtn = new Date()
+Boolean obj, aktualizace = false
+
+objednavky = payload
+objednavky.eachLine { line, count ->
+
+  // Datum aktualizace
+  if (line.contains("Datum aktualizace")) {
+    aktualizace = true
+  }
+  if (aktualizace && (fnd = (line =~ /class="hodnota">(\d+).\s(\d+).\s(\d+)\s\d+:\d+<\/div>/))) {
+    dta = new Date().parse('dd.MM.yyyy', fnd[0][1] + "." + fnd[0][2] + "." + fnd[0][3])
+    aktualizace = false
+  }
+
+  // Den
+  if ((fnd = (line =~ /class="objednavka-den-obalka"\stitle="(.*)\s(\d+).\s(\d+)."/))) {
+    if (food.isEmpty() == false) {
+      day.put([dt:dt,obj:obj], [:] << food)
+      food.clear()
+    }
+    dt = new Date().parse('dd.MM.yyyy', fnd[0][2] + "." + fnd[0][3] + "." + dta.format('yyyy'))
+  }
+
+  // Objednano
+  if ((fnd = (line =~ /zaskrtavaciPolicko_zelena\.png\)\s([-\d]+)px/))) {
+    if (fnd[0][1].equals("0")) {
+      obj = false
+    } else {
+      obj = true
+    }
+  }
+
+  // Jidlo
+  if ((fnd = (line =~ /class='objednavka-jidlo-popis'>(.*?)<\/div><div\sclass='objednavka-jidlo-nazev'>(.*?)<\/div>/))) {
+    food.put(fnd[0][1], fnd[0][2])
+  }
+
+}
+
+// Collect HTML body
+def writer = new StringWriter()
+def html = new MarkupBuilder(writer)
+
+html.div() {
+  h1('Školní jídelna - příští týden')
+  day.each { param, foods ->
+    if ((dtn+5).format('w').equals(param.get('dt').format('w'))) {
+      if (param.get('obj')) {
+        objednano = 'objednáno'
+      } else {
+        objednano = 'odhlášeno'
+      }
+      h2(param.get('dt').format('dd.MM.yyyy') + " - " + objednano)
+      p {
+        strong('Polévka: ')
+        mkp.yield(foods.get('polévka'))
+      }
+      p {
+        strong('Oběd: ')
+        mkp.yield(foods.get('oběd'))
+      }
+    }
+  }
+}
+payload = writer
+]]></scripting:script>
+    </scripting:component>
+    <smtps:outbound-endpoint host="smtp.gmail.com"
+      port="465" user="mule@bobb.cz" password="AtMmiAQaggSDPwVgGp" to="michal.basl@bobb.cz,jana.baslova@bobb.cz,matej.basl@bobb.cz"
+      from="mule@bobb.cz" subject="&#352;koln&#237; j&#237;delna - p&#345;&#237;&#353;t&#237; t&#253;den"
+      responseTimeout="10000" doc:name="JidelnaTyden">
+      <property key="contentType" value="text/html" />
+    </smtps:outbound-endpoint>
+  </flow>
+
+  <sub-flow name="stravaSub_ObjednavkyFlow">
+    <http:request config-ref="HTTP_Request_StravaCz" path="/strava"
+      method="GET" doc:name="strava" sendBodyMode="NEVER" />
+    <set-variable variableName="setCookie"
+      value="#[message.inboundProperties.'set-cookie'.toString().replaceAll(&quot;[\\[\\]]&quot;,&quot;&quot;)]"
+      encoding="ISO-8859-1" doc:name="setCookie" />
+    <gzip-uncompress-transformer doc:name="Gzip Uncompress" />
+    <scripting:component doc:name="Groovy">
+      <scripting:script engine="Groovy"><![CDATA[import groovy.json.JsonBuilder
+
+def html
+def find
+def viewState
+def viewStateGenerator
+
+html = payload.getText()
+html.eachLine { line, count ->
+  find = (line =~ /id="__VIEWSTATE"\svalue="(.*)"/)
+  if (find.size() >0) {
+    viewState = find[0][1]
+  }
+  find = (line =~ /id="__VIEWSTATEGENERATOR"\svalue="(.*)"/)
+  if (find.size() >0) {
+    viewStateGenerator = find[0][1]
+  }
+}
+
+def json = new JsonBuilder()
+json zarizeni: "4834",
+uzivatel:"baslmatej",
+heslo:"22467",
+__VIEWSTATE: viewState,
+__VIEWSTATEGENERATOR: viewStateGenerator
+    
+payload = json.toString()]]></scripting:script>
+    </scripting:component>
+    <json:json-to-object-transformer
+      returnClass="java.util.Map" doc:name="JSON to Object" />
+    <set-property propertyName="#['Content-Type']"
+      value="#['application/x-www-form-urlencoded']" doc:name="Property" />
+    <http:request config-ref="HTTP_Request_StravaCz" path="/strava/stravnik/prihlaseni"
+      method="POST" doc:name="Prihlaseni">
+      <http:request-builder>
+        <http:header headerName="Cookie" value="#[flowVars.setCookie]" />
+      </http:request-builder>
+    </http:request>
+    <http:request config-ref="HTTP_Request_StravaCz" path="/strava/stravnik/objednavky"
+      method="GET" doc:name="Objednavky" sendBodyMode="NEVER">
+      <http:request-builder>
+        <http:header headerName="Cookie" value="#[flowVars.setCookie]" />
+      </http:request-builder>
+    </http:request>
+    <gzip-uncompress-transformer doc:name="Gzip Uncompress" />
+    <object-to-string-transformer doc:name="Object to String" />
+  </sub-flow>
+
+</mule>
