@@ -62,7 +62,7 @@ objednavky.eachLine { line, count ->
 	}
 
 	// Objednano
-	if ((fnd = (line =~ /zaskrtavaciPolicko_zelena\.png\)\s([-\d]+)px/))) {
+	if ((fnd = (line =~ /zaskrtavaciPolicko_.*\.png\)\s(.*?)px/))) {
 		if (fnd[0][1].equals("0")) {
 			obj = false
 		} else {
@@ -150,7 +150,7 @@ objednavky.eachLine { line, count ->
   }
 
   // Objednano
-  if ((fnd = (line =~ /zaskrtavaciPolicko_zelena\.png\)\s([-\d]+)px/))) {
+  if ((fnd = (line =~ /zaskrtavaciPolicko_.*\.png\)\s(.*?)px/))) {
     if (fnd[0][1].equals("0")) {
       obj = false
     } else {
