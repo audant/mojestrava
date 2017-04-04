@@ -26,8 +26,8 @@ http://www.mulesoft.org/schema/mule/schedulers http://www.mulesoft.org/schema/mu
     doc:name="HTTP Request Configuration" />
 
   <flow name="stravaTommorowFlow">
-    <poll doc:name="Mo-Fr 14:00">
-      <schedulers:cron-scheduler expression="0 0 14 ? * MON,TUE,WED,THU,FRI *"
+    <poll doc:name="Sun-Thu 14:00">
+      <schedulers:cron-scheduler expression="0 0 14 ? * MON,TUE,WED,THU,SUN *"
         timeZone="Europe/Prague" />
       <flow-ref name="stravaSub_ObjednavkyFlow" doc:name="stravaSub_ObjednavkyFlow" />
     </poll>
@@ -114,8 +114,8 @@ payload = writer
   </flow>
 
   <flow name="stravaNextWeekFlow">
-    <poll doc:name="Thu 18:00">
-      <schedulers:cron-scheduler expression="0 0 18 ? * THU *"
+    <poll doc:name="Thu 19:00">
+      <schedulers:cron-scheduler expression="0 0 19 ? * THU *"
         timeZone="Europe/Prague" />
       <flow-ref name="stravaSub_ObjednavkyFlow" doc:name="stravaSub_ObjednavkyFlow" />
     </poll>
