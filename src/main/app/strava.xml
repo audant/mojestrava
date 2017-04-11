@@ -36,7 +36,7 @@ http://www.mulesoft.org/schema/mule/schedulers http://www.mulesoft.org/schema/mu
 
 def fnd
 def food = [:], day = [:]
-String objednano
+String objednano, polevka, obed
 Date dta, dt, dtn = new Date()
 Boolean obj, aktualizace = false
 
@@ -84,6 +84,8 @@ def html = new MarkupBuilder(writer)
 html.div() {
 	h1('Školní jídelna - zítra')
 	day.each { param, foods ->
+		polevka =  foods.get('polévka')
+		obed = foods.get('oběd')
 		if ((dtn+1).format('dd.MM.yyyy').equals(param.get('dt').format('dd.MM.yyyy'))) {
 			if (param.get('obj')) {
 				objednano = 'objednáno'
@@ -91,14 +93,18 @@ html.div() {
 				objednano = 'odhlášeno'
 			}
 			h2(param.get('dt').format('dd.MM.yyyy') + " - " + objednano)
-			p {
-				strong('Polévka: ')
-				mkp.yield(foods.get('polévka'))
-			}
-			p {
-				strong('Oběd: ')
-				mkp.yield(foods.get('oběd'))
-			}
+			if (polevka != null)
+				p {
+					strong('Polévka: ')
+					mkp.yield(polevka)
+				}
+			if (obed != null)
+				p {
+					strong('Oběd: ')
+					mkp.yield(foods.get('oběd'))
+				}
+			polevka = ""
+			obed = ""
 		}
 	}
 }
@@ -124,7 +130,7 @@ payload = writer
 
 def fnd
 def food = [:], day = [:]
-String objednano
+String objednano, polevka, obed
 Date dta, dt, dtn = new Date()
 Boolean obj, aktualizace = false
 
@@ -171,24 +177,30 @@ def html = new MarkupBuilder(writer)
 
 html.div() {
   h1('Školní jídelna - příští týden')
-  day.each { param, foods ->
-    if ((dtn+5).format('w').equals(param.get('dt').format('w'))) {
-      if (param.get('obj')) {
-        objednano = 'objednáno'
-      } else {
-        objednano = 'odhlášeno'
-      }
-      h2(param.get('dt').format('dd.MM.yyyy') + " - " + objednano)
-      p {
-        strong('Polévka: ')
-        mkp.yield(foods.get('polévka'))
-      }
-      p {
-        strong('Oběd: ')
-        mkp.yield(foods.get('oběd'))
-      }
-    }
-  }
+	day.each { param, foods ->
+		polevka =  foods.get('polévka')
+		obed = foods.get('oběd')
+		if ((dtn+5).format('w').equals(param.get('dt').format('w'))) {
+			if (param.get('obj')) {
+				objednano = 'objednáno'
+			} else {
+				objednano = 'odhlášeno'
+			}
+			h2(param.get('dt').format('dd.MM.yyyy') + " - " + objednano)
+			if (polevka != null)
+				p {
+					strong('Polévka: ')
+					mkp.yield(polevka)
+				}
+			if (obed != null)
+				p {
+					strong('Oběd: ')
+					mkp.yield(foods.get('oběd'))
+				}
+			polevka = ""
+			obed = ""
+		}
+	}
 }
 payload = writer
 ]]></scripting:script>
